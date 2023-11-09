@@ -19,7 +19,7 @@ args = dotdict({
     'dropout': 0.3,
     'epochs': 10,
     'batch_size': 64,
-    'cuda': torch.cuda.is_available(),
+    'backend': 'cuda', # One of 'cuda', 'cpu', 'mps'
     'num_channels': 512,
 })
 
@@ -29,9 +29,25 @@ class NNetWrapper(NeuralNet):
         self.nnet = revnet(game, args)
         self.board_x, self.board_y = game.getBoardSize()
         self.action_size = game.getActionSize()
+        self.backend = args.backend
 
-        if args.cuda:
-            self.nnet.cuda()
+        if args.backend == 'cuda':
+            if torch.cuda.is_available():
+                print('Using CUDA backend..')
+                self.backend = 'cuda'
+                self.nnet.cuda()
+            else:
+                print('CUDA unavailable! Using CPU backend..')
+                self.backend = 'cpu'
+                self.nnet == self.net.to('cpu')
+        elif args.backend == 'mps':
+            if torch.backends.mps.is_available() and torch.backends.mps.is_built():
+                print('Using MPS backend..')
+                self.backend = 'mps'
+            else:
+                print('MPS unavailable! Using CPU backend..')
+                self.backend = 'cpu'
+            self.nnet = self.nnet.to(args.backend)
 
     def train(self, examples):
         """
@@ -56,8 +72,10 @@ class NNetWrapper(NeuralNet):
                 target_vs = torch.FloatTensor(np.array(vs).astype(np.float64))
 
                 # predict
-                if args.cuda:
+                if self.backend == 'cuda':
                     boards, target_pis, target_vs = boards.contiguous().cuda(), target_pis.contiguous().cuda(), target_vs.contiguous().cuda()
+                else:
+                    boards, target_pis, target_vs = boards.contiguous().to(self.backend), target_pis.contiguous().to(self.backend), target_vs.contiguous().to(self.backend)
 
                 # compute output
                 out_pi, out_v = self.nnet(boards)
@@ -84,7 +102,10 @@ class NNetWrapper(NeuralNet):
 
         # preparing input
         board = torch.FloatTensor(board.astype(np.float64))
-        if args.cuda: board = board.contiguous().cuda()
+        if self.backend == 'cuda':
+            board = board.contiguous().cuda()
+        else:
+            board = board.contiguous().to(self.backend)
         board = board.view(1, self.board_x, self.board_y)
         self.nnet.eval()
         with torch.no_grad():
@@ -115,6 +136,6 @@ class NNetWrapper(NeuralNet):
         filepath = os.path.join(folder, filename)
         if not os.path.exists(filepath):
             raise ("No model in path {}".format(filepath))
-        map_location = None if args.cuda else 'cpu'
+        map_location = self.backend
         checkpoint = torch.load(filepath, map_location=map_location)
         self.nnet.load_state_dict(checkpoint['state_dict'])
