@@ -39,7 +39,7 @@ class NNetWrapper(NeuralNet):
             else:
                 print('CUDA unavailable! Using CPU backend..')
                 self.backend = 'cpu'
-                self.nnet == self.net.to('cpu')
+                self.nnet = self.nnet.to('cpu')
         elif args.backend == 'mps':
             if torch.backends.mps.is_available() and torch.backends.mps.is_built():
                 print('Using MPS backend..')
